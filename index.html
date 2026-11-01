@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>风扇控制器</title>
+<style>
+  :root {
+    --bg: #0b1014;
+    --bg-2: #111a20;
+    --panel: rgba(255,255,255,.045);
+    --panel-2: rgba(255,255,255,.075);
+    --line: rgba(255,255,255,.09);
+    --text: #eef4f7;
+    --muted: #8fa3ae;
+    --accent: #46e6c8;
+    --accent-2: #38bdf8;
+    --warn: #ffb454;
+    --danger: #ff6b6b;
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background:
+      radial-gradient(1100px 620px at 12% -12%, rgba(70,230,200,.14), transparent 62%),
+      radial-gradient(900px 520px at 92% 4%, rgba(56,189,248,.12), transparent 60%),
+      linear-gradient(180deg, #0b1014, #080c0f 65%);
+    color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    padding: 28px 20px 56px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+  .logo {
+    width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center;
+    background: linear-gradient(145deg, rgba(70,230,200,.22), rgba(56,189,248,.16));
+    border: 1px solid rgba(70,230,200,.32);
+    box-shadow: 0 0 26px rgba(70,230,200,.18);
+  }
+  .logo svg { width: 23px; height: 23px; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: .4px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .spacer { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 12px; border-radius: 999px; font-size: 12.5px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #55636b; box-shadow: 0 0 0 3px rgba(255,255,255,.04); }
+  .dot.on { background: var(--accent); box-shadow: 0 0 10px var(--accent), 0 0 0 3px rgba(70,230,200,.14); }
+  .dot.busy { background: var(--warn); box-shadow: 0 0 10px var(--warn); animation: pulse 1.1s infinite; }
+  .dot.err { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: linear-gradient(180deg, var(--panel), rgba(255,255,255,.022));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px; backdrop-filter: blur(12px);
+  }
+  .card + .card { margin-top: 18px; }
+  .card-title { display: flex; align-items: center; gap: 9px; font-size: 13px; letter-spacing: .6px; color: var(--muted); text-transform: uppercase; margin-bottom: 16px; font-weight: 600; }
+  .card-title .bar { width: 3px; height: 13px; border-radius: 2px; background: linear-gradient(180deg, var(--accent), var(--accent-2)); }
+  .card-title .right { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+  /* ---- 主控盘 ---- */
+  .fan-stage { display: grid; grid-template-columns: 260px 1fr; gap: 24px; align-items: center; }
+  @media (max-width: 620px) { .fan-stage { grid-template-columns: 1fr; justify-items: center; } }
+  .dial { position: relative; width: 258px; height: 258px; }
+  .dial svg { width: 100%; height: 100%; display: block; }
+  .dial-center {
+    position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 2px;
+  }
+  .dial-power {
+    width: 78px; height: 78px; border-radius: 50%; margin: 0 auto 6px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.14);
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.16), rgba(255,255,255,.03));
+    color: var(--text); display: grid; place-items: center; transition: .25s;
+  }
+  .dial-power svg { width: 28px; height: 28px; transition: .25s; }
+  .dial-power:hover { border-color: rgba(70,230,200,.5); }
+  .dial-power.on { background: radial-gradient(circle at 35% 30%, rgba(70,230,200,.4), rgba(70,230,200,.08)); border-color: rgba(70,230,200,.6); box-shadow: 0 0 34px rgba(70,230,200,.28); }
+  .dial-power.on svg { filter: drop-shadow(0 0 8px rgba(70,230,200,.7)); }
+  .dial-power:disabled { opacity: .4; cursor: not-allowed; }
+  .dial-value { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .dial-label { font-size: 11.5px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; }
+  .blades { transform-origin: 129px 129px; transition: transform .15s linear; }
+
+  .controls { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
+  .lvl {
+    position: relative; padding: 12px 4px 10px; border-radius: 13px; cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    font-variant-numeric: tabular-nums; transition: .18s; font-size: 12px;
+  }
+  .lvl b { display: block; font-size: 17px; font-weight: 650; margin-bottom: 1px; }
+  .lvl span { color: var(--muted); font-size: 10.5px; letter-spacing: .3px; }
+  .lvl:hover { border-color: rgba(70,230,200,.42); transform: translateY(-1px); }
+  .lvl.active { background: linear-gradient(180deg, rgba(70,230,200,.2), rgba(70,230,200,.06)); border-color: rgba(70,230,200,.55); box-shadow: 0 6px 22px rgba(70,230,200,.13); }
+  .lvl.active b { color: var(--accent); }
+  .lvl:disabled { opacity: .38; cursor: not-allowed; transform: none; }
+
+  .slider-row { display: grid; gap: 7px; }
+  .slider-row .top { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); }
+  .slider-row .top b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 26px; background: transparent; cursor: pointer; margin: 0;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 6px; border-radius: 99px;
+    background: linear-gradient(90deg, var(--accent) var(--p,0%), rgba(255,255,255,.11) var(--p,0%));
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; margin-top: -6px;
+    background: #f4ffff; border: 2px solid var(--accent); box-shadow: 0 0 12px rgba(70,230,200,.5);
+  }
+  input[type=range]::-moz-range-track { height: 6px; border-radius: 99px; background: rgba(255,255,255,.11); }
+  input[type=range]::-moz-range-progress { height: 6px; border-radius: 99px; background: var(--accent); }
+  input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #f4ffff; border: 2px solid var(--accent); }
+  input[type=range]:disabled { opacity: .4; cursor: not-allowed; }
+
+  .stepper { display: flex; gap: 8px; }
+  .stepper .step {
+    flex: none; width: 46px; padding: 0; display: grid; place-items: center;
+    font-size: 18px; line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .stepper input[type=number] { flex: 1; min-width: 0; text-align: center; font-size: 16px; font-weight: 600; }
+
+  .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .toggle {
+    display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 13px; cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--line); transition: .2s; font-size: 13.5px;
+  }
+  .toggle:hover { border-color: rgba(70,230,200,.4); }
+  .toggle.on { background: linear-gradient(180deg, rgba(70,230,200,.17), rgba(70,230,200,.05)); border-color: rgba(70,230,200,.5); }
+  .toggle svg { width: 17px; height: 17px; color: var(--muted); }
+  .toggle.on svg { color: var(--accent); }
+  .toggle .sw { margin-left: auto; width: 34px; height: 19px; border-radius: 99px; background: rgba(255,255,255,.14); position: relative; transition: .2s; }
+  .toggle .sw::after { content: ""; position: absolute; top: 2.5px; left: 2.5px; width: 14px; height: 14px; border-radius: 50%; background: #dfe9ec; transition: .2s; }
+  .toggle.on .sw { background: rgba(70,230,200,.85); }
+  .toggle.on .sw::after { transform: translateX(15px); background: #06231d; }
+  .toggle:disabled { opacity: .45; cursor: not-allowed; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 13px; padding: 11px 13px; }
+  .stat .k { font-size: 11px; color: var(--muted); letter-spacing: .4px; }
+  .stat .v { font-size: 16px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .stat .v small { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  /* ---- 连接 / 账号 ---- */
+  .connect-box { display: grid; gap: 12px; }
+  .field { display: grid; gap: 5px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 10px 12px; border-radius: 11px; color: var(--text);
+    background: rgba(0,0,0,.28); border: 1px solid var(--line); font-size: 13.5px; outline: none;
+    font-variant-numeric: tabular-nums; transition: .18s; font-family: inherit;
+  }
+  .stepper input[type=number]::-webkit-outer-spin-button,
+  .stepper input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .stepper input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input:focus, select:focus { border-color: rgba(70,230,200,.55); box-shadow: 0 0 0 3px rgba(70,230,200,.1); }
+  select option { background: #10191e; }
+
+  button {
+    font-family: inherit; font-size: 13.5px; border-radius: 11px; padding: 10px 16px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--text); transition: .18s;
+  }
+  button:hover:not(:disabled) { border-color: rgba(70,230,200,.45); background: rgba(255,255,255,.1); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary {
+    background: linear-gradient(135deg, #3ddcc0, #34b8ea); color: #04211d; border: none; font-weight: 650;
+    box-shadow: 0 8px 22px rgba(52,200,220,.22);
+  }
+  button.primary:hover:not(:disabled) { filter: brightness(1.07); }
+  button.ghost { background: transparent; }
+  .btn-row { display: flex; gap: 9px; flex-wrap: wrap; }
+  .btn-row > button { flex: 1; min-width: 110px; }
+
+  .hint { font-size: 11.8px; color: var(--muted); line-height: 1.6; }
+  .hint code { background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 5px; font-size: 11.5px; }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .msg { font-size: 12.5px; padding: 9px 12px; border-radius: 10px; display: none; line-height: 1.5; word-break: break-word; }
+  .msg.show { display: block; }
+  .msg.ok { background: rgba(70,230,200,.11); color: #8ff0dc; border: 1px solid rgba(70,230,200,.28); }
+  .msg.err { background: rgba(255,107,107,.1); color: #ffb3b3; border: 1px solid rgba(255,107,107,.28); }
+  .msg.warn { background: rgba(255,180,84,.1); color: #ffd9a6; border: 1px solid rgba(255,180,84,.28); }
+
+  .dev-list { display: grid; gap: 7px; max-height: 260px; overflow: auto; margin-top: 4px; }
+  .dev {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 11px;
+    background: rgba(0,0,0,.22); border: 1px solid var(--line); font-size: 12.8px;
+  }
+  .dev:hover { border-color: rgba(70,230,200,.3); }
+  .dev .nm { font-weight: 600; }
+  .dev .mt { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .dev .badge { font-size: 10px; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .dev .badge.ble { color: var(--accent); border-color: rgba(70,230,200,.35); background: rgba(70,230,200,.08); }
+  .dev button { padding: 5px 10px; font-size: 11.5px; margin-left: auto; }
+
+  details.adv { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 12px; }
+  details.adv summary { font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none; }
+  details.adv[open] summary { margin-bottom: 12px; }
+
+  .log {
+    font: 11.5px/1.6 ui-monospace, "SF Mono", Consolas, monospace; color: #9fb6c0;
+    background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 11px;
+    padding: 10px 12px; max-height: 168px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  .log .t { color: #5c7480; }
+  .log .ok { color: #6fe6cd; }
+  .log .er { color: #ff9b9b; }
+  .log .wr { color: #ffcb85; }
+
+  .unsupported {
+    display: none; padding: 14px 16px; border-radius: 13px; margin-bottom: 18px;
+    background: rgba(255,180,84,.09); border: 1px solid rgba(255,180,84,.3); color: #ffd9a6; font-size: 13px;
+  }
+  .unsupported.show { display: block; }
+  .footer-note { margin-top: 22px; font-size: 11.5px; color: #56666e; text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#46e6c8" stroke-width="1.7" stroke-linecap="round">
+        <circle cx="12" cy="12" r="2.2"/><path d="M12 9.8c0-3.2 1.4-6 4-6.6 1 2.6-.2 5.3-4 6.6z"/>
+        <path d="M12 12c2.8-1.6 5.9-1.6 7.6.7-2 1.9-5 1.7-7.6-.7z"/>
+        <path d="M12 12c1.6 2.8 1.6 5.9-.7 7.6-1.9-2-1.7-5 .7-7.6z"/>
+        <path d="M12 12c-2.8 1.6-5.9 1.6-7.6-.7 2-1.9 5-1.7 7.6.7z"/>
+        <path d="M12 14.2c0 3.2-1.4 6-4 6.6-1-2.6.2-5.3 4-6.6z" opacity=".55"/>
+      </svg>
+    </div>
+    <div>
+      <h1>风扇控制器</h1>
+      <div class="sub">Web Bluetooth 本机直连 · 小米云取 token</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill"><span class="dot" id="connDot"></span><span id="connText">未连接</span></div>
+  </header>
+
+  <div class="unsupported" id="unsupported">
+    当前浏览器不支持 Web Bluetooth。请使用桌面版 <b>Chrome / Edge</b> 打开本页面，并确保系统蓝牙已开启。
+  </div>
+
+  <div class="grid">
+    <div>
+      <!-- 主控 -->
+      <section class="card">
+        <div class="card-title"><span class="bar"></span>风扇控制<span class="right" id="modelText"></span></div>
+        <div class="fan-stage">
+          <div class="dial">
+            <svg viewBox="0 0 258 258">
+              <defs>
+                <linearGradient id="arcGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#46e6c8"/><stop offset="100%" stop-color="#38bdf8"/>
+                </linearGradient>
+                <radialGradient id="hubGrad" cx="38%" cy="32%">
+                  <stop offset="0%" stop-color="rgba(255,255,255,.09)"/>
+                  <stop offset="100%" stop-color="rgba(255,255,255,.015)"/>
+                </radialGradient>
+              </defs>
+              <circle cx="129" cy="129" r="112" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="7"/>
+              <circle id="arc" cx="129" cy="129" r="112" fill="none" stroke="url(#arcGrad)" stroke-width="7"
+                      stroke-linecap="round" stroke-dasharray="703.7" stroke-dashoffset="703.7"
+                      transform="rotate(-90 129 129)" style="transition:stroke-dashoffset .45s ease"/>
+              <circle cx="129" cy="129" r="97" fill="url(#hubGrad)" stroke="rgba(255,255,255,.07)"/>
+              <g class="blades" id="blades" opacity=".5">
+                <g fill="none" stroke="rgba(70,230,200,.42)" stroke-width="1.4" stroke-linecap="round">
+                  <path d="M129 129c0-22 9-41 27-45 7 18-2 36-27 45z"/>
+                  <path d="M129 129c22 0 41 9 45 27-18 7-36-2-45-27z"/>
+                  <path d="M129 129c0 22-9 41-27 45-7-18 2-36 27-45z"/>
+                  <path d="M129 129c-22 0-41-9-45-27 18-7 36 2 45 27z"/>
+                </g>
+              </g>
+            </svg>
+            <div class="dial-center">
+              <button class="dial-power" id="powerBtn" title="开关" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>
+                </svg>
+              </button>
+              <div class="dial-value" id="dialValue">--</div>
+              <div class="dial-label" id="dialLabel">未连接</div>
+            </div>
+          </div>
+
+          <div class="controls">
+            <div class="levels" id="levels">
+              <button class="lvl" data-level="1" disabled><b>1</b><span>1% 微风</span></button>
+              <button class="lvl" data-level="2" disabled><b>2</b><span>25%</span></button>
+              <button class="lvl" data-level="3" disabled><b>3</b><span>50%</span></button>
+              <button class="lvl" data-level="4" disabled><b>4</b><span>75%</span></button>
+              <button class="lvl" data-level="5" disabled><b>5</b><span>100%</span></button>
+            </div>
+
+            <div class="slider-row">
+              <div class="top"><span>无级调速</span><b><span id="pctValue">--</span>%</b></div>
+              <input type="range" id="speedRange" min="0" max="100" step="1" value="0" disabled>
+            </div>
+
+            <div class="toggles">
+              <button class="toggle" id="lightToggle" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.5.4.8 1 .8 1.7v.5h5.6v-.5c0-.7.3-1.3.8-1.7A6 6 0 0 0 12 3z"/>
+                </svg>
+                夜灯<span class="sw"></span>
+              </button>
+              <button class="toggle" id="timerBtn" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/>
+                </svg>
+                <span id="timerLabel">定时 关</span><span class="sw"></span>
+              </button>
+            </div>
+
+            <div class="slider-row" id="timerRow" style="opacity:.45">
+              <div class="top"><span>关机定时（设备端）</span><b><span id="timerValue">0</span> <span id="timerUnit">小时</span></b></div>
+              <div class="stepper">
+                <button type="button" class="step" id="timerMinus" disabled>−</button>
+                <input type="number" id="timerInput" min="0" step="1" value="0" inputmode="numeric" disabled>
+                <button type="button" class="step" id="timerPlus" disabled>+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-row" style="margin-top:20px">
+          <div class="stat" id="statBatteryBox"><div class="k">电量</div><div class="v" id="statBattery">--<small> %</small></div></div>
+          <div class="stat" id="statChargingBox"><div class="k">充电状态</div><div class="v" id="statCharging" style="font-size:14px">--</div></div>
+          <div class="stat"><div class="k">定时剩余</div><div class="v" id="statRemaining" style="font-size:14px">--</div></div>
+        </div>
+      </section>
+
+      <!-- 连接 -->
+      <section class="card">
+        <div class="card-title"><span class="bar"></span>连接风扇<span class="right"><button class="ghost" id="disconnectBtn" style="padding:5px 11px;font-size:12px" disabled>断开</button></span></div>
+        <div class="connect-box">
+          <div class="field">
+            <label>BLE Token（12 字节 / 24 位十六进制）</label>
+            <input type="password" id="tokenInput" placeholder="00112233445566778899aabb" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="btn-row">
+            <button class="primary" id="connectBtn">选择设备并连接</button>
+            <button class="ghost" id="reconnectBtn" title="不弹窗，直接连上次的设备（需已授权）">快速重连</button>
+          </div>
+          <div class="hint">
+            连接需要使用「Mi Standard BLE 认证 token」，不是网关 token 或 MIoT 的 OAuth token。
+            没有的话可用下方的云端提取，或手动从已配对的米家设备获取。
+          </div>
+          <div class="hint">
+            Token 会自动写进地址栏（<b>?token=…</b>），填好一次后收藏本页，下次打开即自动带上，无需再填。
+          </div>
+          <div class="hint" style="color:var(--warn)">
+            搜不到设备时：① 关闭手机上已连接该风扇的米家/蓝牙；② 确认 Windows 蓝牙已开启；
+            ③ 用 <b>http://127.0.0.1:8765</b> 打开本页（先运行 node proxy.js），file:// 下部分设备不广播名字会被过滤掉。
+          </div>
+          <div class="msg" id="connMsg"></div>
+        </div>
+      </section>
+    </div>
+
+    <div>
+      <!-- 云端账号 -->
+      <section class="card">
+        <div class="card-title"><span class="bar"></span>小米云提取 Token<span class="right" style="font-size:11px">可选</span></div>
+        <div class="connect-box">
+          <div class="row2">
+            <div class="field">
+              <label>小米账号（邮箱 / 手机号 / ID）</label>
+              <input type="text" id="userInput" autocomplete="username" spellcheck="false">
+            </div>
+            <div class="field">
+              <label>密码</label>
+              <input type="password" id="passInput" autocomplete="current-password">
+            </div>
+          </div>
+          <div class="field">
+            <label>服务器</label>
+            <select id="serverSelect">
+              <option value="">全部服务器（较慢）</option>
+              <option value="cn">中国大陆 cn</option>
+              <option value="de">德国 de</option>
+              <option value="us">美国 us</option>
+              <option value="ru">俄罗斯 ru</option>
+              <option value="tw">台湾 tw</option>
+              <option value="sg">新加坡 sg</option>
+              <option value="in">印度 in</option>
+              <option value="i2">i2</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="primary" id="loginBtn">登录并拉取设备</button>
+            <button class="ghost" id="logoutBtn" disabled>注销</button>
+          </div>
+          <div class="msg" id="cloudMsg"></div>
+          <div class="dev-list" id="devList"></div>
+          <details class="adv">
+            <summary>代理地址设置 / 说明</summary>
+            <div class="field" style="margin-bottom:10px">
+              <label>本地代理地址</label>
+              <input type="text" id="proxyInput" value="http://127.0.0.1:8765" spellcheck="false">
+            </div>
+            <div class="hint">
+              浏览器无法直连小米云（CORS），需先在本机运行附带的小代理：<br>
+              <code>node proxy.js</code><br>
+              账号密码只在本机 <code>127.0.0.1</code> 与小米服务器之间传递，不会被存盘。
+              开启图形验证码或邮箱二次验证的账号，请先在米家 App / 浏览器登录一次再试。
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- 日志 -->
+      <section class="card">
+        <div class="card-title"><span class="bar"></span>运行日志<span class="right"><label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px;cursor:pointer"><input type="checkbox" id="rawToggle" style="accent-color:#46e6c8">原始通知</label><button class="ghost" id="clearLogBtn" style="padding:4px 10px;font-size:11.5px">清空</button></span></div>
+        <div class="log" id="log"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    协议实现参考 E7G/xiaomi-ble-control（MIT）· 云接口参考 PiotrMachowski/Xiaomi-cloud-tokens-extractor（MIT）<br>
+    非小米官方工具，仅用于控制你自己已配对的设备。
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================================
+ * 1. F11 协议层（移植自 E7G/xiaomi-ble-control 的 protocol.py）
+ *    - Mi Standard BLE 认证：HKDF(token, salt=nonce+remoteNonce, info="mible-login-info")
+ *    - 属性读写：MI GATT Spec v2 + AES-CCM(tag 4)
+ * ========================================================================== */
+
+const UUID = (v) => `0000${v.toString(16).padStart(4, "0").replace(/^0{3}/, "000")}-0000-1000-8000-00805f9b34fb`;
+const CH = {
+  AUTH: `00000019-0000-1000-8000-00805f9b34fb`,
+  STATUS: `00000010-0000-1000-8000-00805f9b34fb`,
+  TX: `0000001a-0000-1000-8000-00805f9b34fb`,
+  RX: `0000001b-0000-1000-8000-00805f9b34fb`,
+  INFO: `0000001c-0000-1000-8000-00805f9b34fb`,
+};
+const READY = new Uint8Array([0, 0, 1, 1]);
+const OK = new Uint8Array([0, 0, 1, 0]);
+const ACK = new Uint8Array([0, 0, 3, 0]);
+
+const PRODUCT_ID = 24466;            // szxzh.fan.f11
+const MIBEACON_SERVICE = "0000fe95-0000-1000-8000-00805f9b34fb";
+const LEVEL_SPEEDS = [0, 1, 25, 50, 75, 100];
+const LEVEL_LABELS = ["关", "1%", "25%", "50%", "75%", "100%"];
+
+const hex = (b) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
+const u8 = (...v) => new Uint8Array(v.flat());
+const concat = (...arrs) => {
+  const total = arrs.reduce((n, a) => n + a.length, 0);
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const a of arrs) { out.set(a, o); o += a.length; }
+  return out;
+};
+const le16 = (v) => u8(v & 0xff, (v >> 8) & 0xff);
+const le32 = (v) => u8(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
+const u16le = (b, o = 0) => b[o] | (b[o + 1] << 8);
+const eq = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+const speedPercent = (raw, offset = 128) => Math.max(0, Math.min(100, raw - offset));
+const speedLevel = (speed) => {
+  if (speed <= 0) return 0;
+  let best = 1;
+  for (let i = 2; i <= 5; i++) if (Math.abs(LEVEL_SPEEDS[i] - speed) < Math.abs(LEVEL_SPEEDS[best] - speed)) best = i;
+  return best;
+};
+const levelToSpeed = (level) => LEVEL_SPEEDS[level];
+
+/** MI GATT Spec v2：写入一个无符号属性 */
+/** width: 1 / 2 / 4 字节，fmt = 1(uint8) / 3(uint16) / 5(uint32) */
+function encodeProperty(tid, siid, piid, value, width = 1) {
+  const fmt = width === 2 ? 3 : width === 4 ? 5 : 1;
+  const prop = concat(u8(siid), le16(piid), le16((fmt << 12) | width));
+  const val = width === 2 ? le16(value) : width === 4 ? le32(value) : u8(value);
+  const payload = concat(u8(0, 1), prop, val);
+  return concat(le16(0x2000 | (payload.length + 4)), le16(tid), payload);
+}
+
+/** 解析 MI GATT Spec v2 回包，返回 [tid, op, { "siid,piid": value }] */
+function decodeProperties(packet) {
+  if (packet.length < 6) throw new Error("响应包被截断");
+  const header = u16le(packet, 0);
+  const tid = u16le(packet, 2);
+  const op = packet[4];
+  const count = packet[5];
+  if (header >> 12 !== 2 || (header & 0xfff) !== packet.length) throw new Error("响应包头非法");
+  const values = {};
+  let off = 6;
+  if (op !== 1 && op !== 3 && op !== 4) return [tid, op, values];
+  for (let i = 0; i < count; i++) {
+    if (off + 5 > packet.length) throw new Error("属性被截断");
+    const siid = packet[off];
+    const piid = u16le(packet, off + 1);
+    const kind = u16le(packet, off + 3);
+    off += 5;
+    if (op === 1) { // 写回执：只关心结果码
+      values[`${siid},${piid}`] = (kind << 16) >> 16;
+      continue;
+    }
+    const length = kind & 0xfff;
+    const fmt = kind >> 12;
+    if (off + length > packet.length) throw new Error("属性值被截断");
+    const widths = [1, 1, 1, 2, 2, 4, 4, 8, 8];
+    if (fmt <= 8) {
+      if (length !== widths[fmt]) throw new Error("属性位宽非法");
+      let v = 0;
+      for (let k = length - 1; k >= 0; k--) v = v * 256 + packet[off + k];
+      if (fmt === 2 || fmt === 4 || fmt === 6 || fmt === 8) {
+        const bits = length * 8;
+        if (v >= 2 ** (bits - 1)) v -= 2 ** bits;
+      }
+      values[`${siid},${piid}`] = v;
+    }
+    off += length;
+  }
+  return [tid, op, values];
+}
+
+/* ---- AES-CCM (tag 4) ---- RFC 3610，基于 WebCrypto 的 AES-ECB 单块模拟 ---- */
+
+class AESCCM {
+  constructor(key, tagLength = 4) {
+    if (key.length !== 16) throw new Error("AES-CCM 需要 16 字节密钥");
+    this.tagLength = tagLength;
+    this._key = crypto.subtle.importKey("raw", key, "AES-CBC", false, ["encrypt", "decrypt"]);
+  }
+
+  /**
+   * 单个 AES 分组加密。
+   * 浏览器 WebCrypto 没有 ECB，用 CBC + 全零 IV 加密单个分组即可等价：
+   * C = E(P xor 0) = E(P)。（注意不能用 AES-CTR，那是异或密钥流，不会真正加密明文）
+   */
+  static async _ecb(ctx, block) {
+    const k = await ctx._key;
+    const buf = await crypto.subtle.encrypt(
+      { name: "AES-CBC", iv: new Uint8Array(16) },
+      k,
+      block
+    );
+    // WebCrypto 的 AES-CBC 一定会追加 PKCS#7 填充块，单个分组加密时截掉尾部即可
+    return new Uint8Array(buf, 0, 16);
+  }
+
+  static _xor(a, b) {
+    const out = new Uint8Array(a.length);
+    for (let i = 0; i < a.length; i++) out[i] = a[i] ^ b[i];
+    return out;
+  }
+
+  /** CBC-MAC 覆盖 b0、AAD 与明文 */
+  async _mac(nonce, aad, plaintext) {
+    const L = 15 - nonce.length;
+    const b0 = new Uint8Array(16);
+    b0[0] = (aad.length ? 0x40 : 0) | ((((this.tagLength - 2) / 2) & 0x07) << 3) | (L - 1);
+    b0.set(nonce, 1);
+    let len = plaintext.length;
+    for (let i = 0; i < L; i++) { b0[15 - i] = len & 0xff; len = Math.floor(len / 256); }
+
+    const blocks = [b0];
+    if (aad.length) {
+      const head = u8((aad.length >> 8) & 0xff, aad.length & 0xff);
+      const body = concat(head, aad);
+      const aligned = new Uint8Array(Math.ceil(body.length / 16) * 16);
+      aligned.set(body);
+      for (let i = 0; i < aligned.length; i += 16) blocks.push(aligned.subarray(i, i + 16));
+    }
+    const pt = new Uint8Array(Math.ceil(plaintext.length / 16) * 16);
+    pt.set(plaintext);
+    for (let i = 0; i < pt.length; i += 16) blocks.push(pt.subarray(i, i + 16));
+
+    let x = new Uint8Array(16);
+    for (const block of blocks) x = await AESCCM._ecb(this, AESCCM._xor(x, block));
+    // CCM 的 tag 定义是 T = U XOR S0（S0 为计数器 0 的密钥流块）
+    const s0 = await AESCCM._ecb(this, concat(u8(L - 1), nonce, new Uint8Array(L)));
+    return AESCCM._xor(x.subarray(0, this.tagLength), s0.subarray(0, this.tagLength));
+  }
+
+  /** CTR 密钥流异或，计数器 A_i 从 1 开始 */
+  async _ctr(nonce, data) {
+    const L = 15 - nonce.length;
+    const out = new Uint8Array(data.length);
+    const n = Math.ceil(data.length / 16);
+    for (let i = 0; i < n; i++) {
+      const ai = new Uint8Array(16);
+      ai[0] = L - 1;
+      ai.set(nonce, 1);
+      let c = i + 1;
+      for (let j = 15; j > 15 - L; j--) { ai[j] = c & 0xff; c = Math.floor(c / 256); }
+      const s = await AESCCM._ecb(this, ai);
+      for (let j = 0; j < 16 && i * 16 + j < data.length; j++) out[i * 16 + j] = data[i * 16 + j] ^ s[j];
+    }
+    return out;
+  }
+
+  async encrypt(nonce, plaintext, aad = new Uint8Array(0)) {
+    const tag = await this._mac(nonce, aad, plaintext);
+    const ct = await this._ctr(nonce, plaintext);
+    return concat(ct, tag);
+  }
+
+  async decrypt(nonce, ciphertextAndTag, aad = new Uint8Array(0)) {
+    const n = ciphertextAndTag.length - this.tagLength;
+    if (n < 0) throw new Error("密文过短");
+    const ct = ciphertextAndTag.subarray(0, n);
+    const tag = ciphertextAndTag.subarray(n);
+    const pt = await this._ctr(nonce, ct);
+    const expect = await this._mac(nonce, aad, pt);
+    if (!eq(tag, expect)) throw new Error("AES-CCM 校验失败");
+    return pt;
+  }
+}
+
+/* ---- HKDF-SHA256（WebCrypto 的 HKDF 不能输出 64 字节以上以外的问题，这里直接实现）---- */
+
+async function hkdfSha256(ikm, salt, info, length) {
+  const base = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, base, length * 8);
+  return new Uint8Array(bits);
+}
+
+async function hmacSha256(key, data) {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", k, data));
+}
+
+/* ============================================================================
+ * 2. GATT 传输 + 认证会话
+ * ========================================================================== */
+
+class F11Session {
+  constructor(device, token, { onProperties, onLog, onRaw, widths } = {}) {
+    this.device = device;
+    this.token = token;
+    this.onProperties = onProperties || (() => {});
+    this.onLog = onLog || (() => {});
+    this.onRaw = onRaw || (() => {});
+    this.widths = widths || {};
+
+    // 统一使用特征值名称作为键（AUTH / STATUS / TX / RX / INFO）
+    this._control = { AUTH: [], TX: [] };
+    this._controlWaiters = { AUTH: [], TX: [] };
+    this._received = [];
+    this._receivedWaiters = [];
+    this._status = [];
+    this._statusWaiters = [];
+    this._parts = {};
+    this._pending = new Map();
+    this._tid = 0;
+    this._counter = 0;
+    this._rxCounter = -1;
+    this._sendLock = Promise.resolve();
+    this._closed = false;
+    this.devCCM = null;
+    this.appCCM = null;
+    // Chrome 同一设备同时只允许一个 GATT 操作，所有写入串行化
+    this._writeChain = Promise.resolve();
+  }
+
+  /** 串行写入，避免 "GATT operation already in progress" */
+  _write(ch, data) {
+    const task = this._writeChain.then(() => ch.writeValueWithoutResponse(data));
+    this._writeChain = task.catch(() => {});
+    return task;
+  }
+
+  _put(queue, waiters, value) {
+    const w = waiters.shift();
+    if (w) w(value); else queue.push(value);
+  }
+  _take(queue, waiters, timeout = 10000, label = "等待设备响应超时") {
+    if (queue.length) return Promise.resolve(queue.shift());
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const i = waiters.indexOf(fn);
+        if (i >= 0) waiters.splice(i, 1);
+        reject(new Error(label));
+      }, timeout);
+      const fn = (v) => { clearTimeout(timer); resolve(v); };
+      waiters.push(fn);
+    });
+  }
+
+  async connect() {
+    const server = await this.device.gatt.connect();
+    this.server = server;
+    this.chars = {};
+    const services = await server.getPrimaryServices().catch(() => []);
+    for (const [name, uuid] of Object.entries(CH)) {
+      const ch = await server.getPrimaryService(uuid)
+        .then((s) => s.getCharacteristic(uuid))
+        .catch(() => null);
+      this.chars[name] = ch || null;
+      if (!this.chars[name]) {
+        // 部分固件把特征值放在自定义 service 里，逐个 service 找
+        for (const s of services) {
+          try { this.chars[name] = await s.getCharacteristic(uuid); break; } catch { /* 继续找 */ }
+        }
+      }
+      if (!this.chars[name]) throw new Error(`设备缺少特征值 ${uuid.slice(4, 8)}`);
+    }
+    this.device.addEventListener("gattserverdisconnected", () => {
+      this._closed = true;
+      for (const w of this._receivedWaiters) w(Promise.reject(new Error("已断开")));
+      for (const f of this._pending.values()) f.reject(new Error("已断开"));
+      this._pending.clear();
+    });
+  }
+
+  async start() {
+    for (const [name, ch] of Object.entries(this.chars)) {
+      await ch.startNotifications();
+      ch.addEventListener("characteristicvaluechanged", (e) => this._onNotify(name, new Uint8Array(e.target.value.buffer)));
+    }
+    const nonce = crypto.getRandomValues(new Uint8Array(16));
+    this.onLog("写入 Mi 认证状态位 …", "info");
+    await this._write(this.chars.STATUS, u8(0x24, 0, 0, 0));
+    await this._send("AUTH", 0x0b, nonce);
+
+    const [kind1, remoteNonce] = await this._take(this._received, this._receivedWaiters, 10000, "认证超时：设备未返回 nonce");
+    if (kind1 !== 0x0d || remoteNonce.length !== 16) throw new Error("设备返回的认证 nonce 非法");
+
+    const keys = await hkdfSha256(this.token, concat(nonce, remoteNonce), new TextEncoder().encode("mible-login-info"), 64);
+
+    const [kind2, proof] = await this._take(this._received, this._receivedWaiters, 10000, "认证超时：设备未返回签名");
+    const expected = await hmacSha256(keys.subarray(0, 16), concat(remoteNonce, nonce));
+    if (kind2 !== 0x0c || !eq(proof, expected)) throw new Error("认证失败：Token 与设备不匹配");
+
+    this.devCCM = new AESCCM(keys.subarray(0, 16), 4);
+    this.appCCM = new AESCCM(keys.subarray(16, 32), 4);
+    this.devIV = keys.subarray(32, 36);
+    this.appIV = keys.subarray(36, 40);
+
+    await this._send("AUTH", 0x0a, await hmacSha256(keys.subarray(16, 32), concat(nonce, remoteNonce)));
+    const status = await this._take(this._status, this._statusWaiters, 10000, "认证超时：设备未确认登录");
+    if (!eq(status, u8(0x21, 0, 0, 0))) throw new Error("设备拒绝登录（token 错误或已被其他控制器占用）");
+  }
+
+  async _send(charName, kind, payload) {
+    const ch = this.chars[charName];
+    const count = Math.ceil(payload.length / 18);
+    this._control[charName].length = 0; // 丢弃上一轮遗留的控制帧
+    // 先注册等待，再发头帧，避免设备应答比等待者更早到达
+    const readyP = this._take(this._control[charName], this._controlWaiters[charName], 10000, "传输层未就绪");
+    await this._write(ch, concat(le16(0), u8(0, kind), le16(count)));
+    await this._checkControl(await readyP, READY, "设备未进入接收状态");
+    const doneP = this._take(this._control[charName], this._controlWaiters[charName], 10000, "传输层未确认");
+    for (let i = 0; i < count; i++) {
+      await this._write(ch, concat(le16(i + 1), payload.subarray(i * 18, (i + 1) * 18)));
+    }
+    await this._checkControl(await doneP, OK, "设备拒绝接收数据");
+  }
+
+  /** 校验传输层控制帧；按前 4 字节比对，并容忍省略 READY 的固件 */
+  _checkControl(data, wanted, mismatchLabel) {
+    const head = data.subarray(0, 4);
+    if (eq(head, wanted)) return;
+    if (eq(head, OK) && eq(wanted, READY)) {
+      this.onLog("设备未回 READY，按可写状态继续", "wr");
+      return;
+    }
+    this.onLog(`收到控制帧 ${hex(data)}（期望 ${hex(wanted)}）`, "er");
+    throw new Error(`${mismatchLabel}（${hex(head)}）`);
+  }
+
+  async _onNotify(charName, data) {
+    this.onRaw(charName, data);
+    if (charName === "STATUS") { this._put(this._status, this._statusWaiters, data); return; }
+    if (charName === "INFO" || data.length < 2) return;
+    const frame = u16le(data, 0);
+    if (frame === 0) {
+      if (data.length < 4) return;
+      const mode = data[2];
+      const kind = data[3];
+      if (mode === 1) {
+        const waiters = this._controlWaiters[charName];
+        if (!waiters) return;
+        // 没有等待者时丢弃，避免上一轮/初始化时的杂散控制帧被当成 READY
+        if (waiters.length) this._put(this._control[charName], waiters, data);
+        else this.onLog(`忽略多余控制帧 ${charName}:${hex(data)}`, "wr");
+        return;
+      }
+      if (mode === 2) {
+        this._receive(charName, kind, data.subarray(4)).catch((e) => this.onLog(`解析通知失败：${e.message || e}`, "er"));
+        this._ack(charName, ACK);
+      } else if (mode === 0 && data.length === 6) {
+        const count = u16le(data, 4);
+        if (!(count > 0 && count <= 256)) return;
+        this._parts[charName] = { kind, count, buf: [], expect: 1 };
+        this._ack(charName, READY);
+      }
+    } else if (this._parts[charName]) {
+      const part = this._parts[charName];
+      if (frame !== part.expect) { delete this._parts[charName]; return; }
+      part.buf.push(data.subarray(2));
+      if (frame === part.count) {
+        delete this._parts[charName];
+        this._ack(charName, OK);
+        this._receive(charName, part.kind, concat(...part.buf)).catch((e) => this.onLog(`解析通知失败：${e.message || e}`, "er"));
+      } else {
+        part.expect++;
+      }
+    }
+  }
+
+  /** 传输层应答：失败不应中断后续通知处理 */
+  _ack(charName, frame) {
+    const ch = this.chars[charName];
+    if (ch) this._write(ch, frame).catch((e) => this.onLog(`传输层应答失败：${e.message || e}`, "er"));
+  }
+
+  async _receive(charName, kind, data) {
+    if (charName === "AUTH") { this._put(this._received, this._receivedWaiters, [kind, data]); return; }
+    if (charName !== "RX" && charName !== "TX") return;
+    if (kind !== 0 || !this.devCCM || data.length < 6) return;
+    const counter = u16le(data, 0);
+    if (counter <= this._rxCounter) return;
+    const nonce = concat(this.devIV, u8(0, 0, 0, 0), le32(counter));
+    const packet = await this.devCCM.decrypt(nonce, data.subarray(2));
+    this._rxCounter = counter;
+    const [tid, op, values] = decodeProperties(packet);
+    if (op === 3 || op === 4) this.onProperties(values);
+    else if (op === 1 && this._pending.has(tid)) {
+      const p = this._pending.get(tid);
+      this._pending.delete(tid);
+      p.resolve(values);
+    }
+  }
+
+  write(siid, piid, value) {
+    const run = async () => {
+      if (!this.appCCM || this._closed) throw new Error("连接不可用");
+      if (this._counter >= 65535) throw new Error("会话计数器已用尽，请重连");
+      this._tid = (this._tid + 1) & 0xffff;
+      this._counter++;
+      const packet = encodeProperty(this._tid, siid, piid, value, this.widths[`${siid},${piid}`] || 1);
+      const nonce = concat(this.appIV, u8(0, 0, 0, 0), le32(this._counter));
+      const data = concat(le16(this._counter), await this.appCCM.encrypt(nonce, packet));
+      const tid = this._tid;
+      const future = new Promise((resolve, reject) => this._pending.set(tid, { resolve, reject }));
+      try {
+        await this._send("TX", 0, data);
+        const result = await Promise.race([
+          future,
+          new Promise((_, rej) => setTimeout(() => rej(new Error("写入确认超时")), 10000)),
+        ]);
+        if (result[`${siid},${piid}`] !== 0) throw new Error("设备拒绝了该属性写入");
+      } finally {
+        this._pending.delete(tid);
+      }
+    };
+    const next = this._sendLock.then(run, run);
+    this._sendLock = next.catch(() => {});
+    return next;
+  }
+
+  /** 主动断开（关闭 GATT，触发 gattserverdisconnected） */
+  disconnect() {
+    this._closed = true;
+    try { if (this.device.gatt.connected) this.device.gatt.disconnect(); } catch { /* 忽略 */ }
+  }
+}
+
+/* ============================================================================
+ * 3. 页面胶水层
+ * ========================================================================== */
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* 不同型号的 siid/piid 不同：F11 用 siid 3，J15SL 用 siid 2 */
+const PROFILES = {
+  f11: {
+    label: "F11 / F11 Pro",
+    props: { STATUS: [3, 1], SPEED: [3, 2], TIMER: [3, 3], REMAIN: [3, 4], LIGHT: [3, 5], BATTERY: [3, 6], CHARGE: [2, 1034] },
+    widths: { "3,3": 2 },
+    speedOffset: 128,
+    speedMask: 0xff,      // 上报值 128+百分比
+    powerViaSpeed: true,
+    hasBattery: true,
+    timerUnit: "minutes",
+    timerMax: 480,
+    timerStep: 10,
+    remainFactor: 1,      // 剩余时间单位：秒
+  },
+  j15sl: {
+    label: "J15SL",
+    props: { STATUS: [2, 1], SPEED: [2, 2], TIMER: [2, 3], REMAIN: [2, 4], LIGHT: [2, 5], BATTERY: [0, 0], CHARGE: [0, 0] },
+    widths: { "2,2": 2, "2,4": 2 },
+    // uint16：低 8 位速度、高 8 位模式（0=无级调速）
+    speedOffset: 0,
+    speedMask: 0xff,
+    powerViaSpeed: false,
+    hasBattery: false,
+    timerUnit: "hours",
+    timerMax: 24,
+    timerStep: 1,
+    remainFactor: 60,     // 剩余时间单位：分钟
+  },
+};
+function detectProfile(name) {
+  const n = (name || "").toLowerCase();
+  return n.includes("j15") ? PROFILES.j15sl : PROFILES.f11;
+}
+/** 按型号调整界面：定时单位/上限、是否显示电量卡片 */
+function applyProfileUI() {
+  const p = state.profile;
+  $("timerInput").max = String(p.timerMax);
+  $("timerInput").value = "0";
+  $("timerValue").textContent = "0";
+  $("timerUnit").textContent = p.timerUnit === "hours" ? "小时" : "分钟";
+  $("statBatteryBox").style.display = p.hasBattery ? "" : "none";
+  $("statChargingBox").style.display = p.hasBattery ? "" : "none";
+  const statRow = document.querySelector(".stat-row");
+  if (statRow) statRow.style.gridTemplateColumns = `repeat(${p.hasBattery ? 3 : 1}, 1fr)`;
+}
+/** 当前定时输入框里的时长（单位随型号） */
+function timerInputValue() {
+  return clampTimer(Number($("timerInput").value) || 0);
+}
+function clampTimer(v) {
+  const p = state.profile;
+  return Math.max(0, Math.min(p.timerMax, Math.round(v)));
+}
+/** 把输入框与显示值同步 */
+function setTimerInput(v) {
+  const val = clampTimer(v);
+  $("timerInput").value = String(val);
+  $("timerValue").textContent = String(val);
+  $("timerRow").style.opacity = val > 0 ? "1" : ".45";
+}
+let PROP = PROFILES.f11.props;
+const PROP_NAME = { STATUS: "状态", SPEED: "风速", TIMER: "定时", REMAIN: "剩余", LIGHT: "夜灯", BATTERY: "电量", CHARGE: "充电" };
+function propName(key) {
+  for (const [name, addr] of Object.entries(PROP)) if (addr.join(",") === key) return PROP_NAME[name] || key;
+  return key;
+}
+/** 设备上报的风速原始值 → 百分比 */
+function rawToSpeed(raw) {
+  if (raw === undefined) return 0;
+  const p = state.profile;
+  const v = p.speedOffset ? raw - p.speedOffset : (p.speedMask ? raw & p.speedMask : raw);
+  return Math.max(0, Math.min(100, v));
+}
+const timerSeconds = (v) => v * (state.profile.timerUnit === "hours" ? 3600 : 60);
+const timerUnitLabel = () => (state.profile.timerUnit === "hours" ? "小时" : "分钟");
+const WORK_OFF = 0, WORK_ON = 1, WORK_IDLE = 2;
+const ARC_LEN = 703.7;
+
+const state = {
+  session: null,      // F11Session
+  device: null,       // BluetoothDevice
+  connected: false,
+  connecting: false,  // 正在建立/恢复连接
+  busy: false,
+  listenedDevice: null,
+  props: {},          // "siid,piid" -> value
+  profile: PROFILES.f11,
+  lastSpeed: 50,      // 上次运行风速，用于开机时恢复
+  countdown: 0,       // 定时剩余秒数（本地推算）
+  remainRaw: undefined,
+  lastNotify: 0,
+  sid: null,
+  autoReconnect: true,
+  retry: 0,
+  timerRetry: null,
+};
+
+/* ---- 日志 ---- */
+function log(msg, cls = "") {
+  const el = $("log");
+  const t = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  const line = document.createElement("div");
+  line.innerHTML = `<span class="t">${t}</span> <span class="${cls}"></span>`;
+  line.lastChild.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  while (el.childElementCount > 300) el.removeChild(el.firstChild);
+}
+$("clearLogBtn").onclick = () => { $("log").innerHTML = ""; };
+
+function showMsg(id, text, kind = "warn") {
+  const el = $(id);
+  el.className = `msg show ${kind}`;
+  el.textContent = text;
+}
+function hideMsg(id) { $(id).className = "msg"; }
+
+/* ---- 持久化 ---- */
+const STORE_KEY = "f11-controller";
+function loadStore() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch { return {}; }
+}
+function saveStore(patch) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ ...loadStore(), ...patch })); } catch { /* 忽略 */ }
+}
+
+/* ---- BLE Token：同时写进地址栏（?token=...），收藏后下次打开即自动填好 ---- */
+function normalizeToken(raw) {
+  const hex = (raw || "").trim().replace(/[^0-9a-fA-F]/g, "").toLowerCase();
+  return hex.length === 24 ? hex : "";
+}
+function tokenFromUrl() {
+  const q = new URLSearchParams(location.search).get("token");
+  const h = new URLSearchParams(location.hash.replace(/^#/, "")).get("token");
+  return normalizeToken(q || h || "");
+}
+function syncUrlToken(token) {
+  try {
+    const url = new URL(location.href);
+    if (token) url.searchParams.set("token", token);
+    else url.searchParams.delete("token");
+    history.replaceState(null, "", url);
+  } catch { /* file:// 下可能被拒绝，忽略 */ }
+}
+function applyToken(raw, save = true) {
+  const hex = normalizeToken(raw);
+  $("tokenInput").value = hex;
+  if (save) saveStore({ token: hex });
+  syncUrlToken(hex);
+  return hex;
+}
+
+/* ---- 连接状态 ---- */
+function setConn(status, text) {
+  const dot = $("connDot");
+  dot.className = `dot ${status === "on" ? "on" : status === "busy" ? "busy" : status === "err" ? "err" : ""}`;
+  $("connText").textContent = text;
+  const on = status === "on";
+  state.connected = on;
+  for (const el of [$("powerBtn"), $("speedRange"), $("lightToggle"), $("timerBtn"), $("timerInput"), $("timerMinus"), $("timerPlus"), $("disconnectBtn")]) {
+    if (el) el.disabled = !on;
+  }
+  for (const b of document.querySelectorAll(".lvl")) b.disabled = !on;
+  $("connectBtn").disabled = status === "busy";
+  $("reconnectBtn").disabled = status === "busy";
+  if (!on) {
+    $("dialValue").textContent = "--";
+    $("dialLabel").textContent = "未连接";
+    $("modelText").textContent = "";
+    $("powerBtn").classList.remove("on");
+    $("lightToggle").classList.remove("on");
+    $("timerBtn").classList.remove("on");
+    $("timerLabel").textContent = "定时 关";
+    $("timerValue").textContent = "0";
+    $("timerInput").value = "0";
+    $("timerRow").style.opacity = ".45";
+    $("pctValue").textContent = "--";
+    $("speedRange").value = "0";
+    $("speedRange").style.setProperty("--p", "0%");
+    $("arc").style.strokeDashoffset = String(ARC_LEN);
+    $("blades").style.animation = "";
+    $("blades").style.opacity = ".5";
+    for (const b of document.querySelectorAll(".lvl")) b.classList.remove("active");
+    $("statBattery").innerHTML = "--<small> %</small>";
+    $("statCharging").textContent = "--";
+    $("statRemaining").textContent = "--";
+  }
+}
+
+/* ---- 渲染设备属性 ---- */
+function render() {
+  const p = state.props;
+  const workRaw = p[PROP.STATUS.join(",")];
+  const work = workRaw === undefined ? WORK_OFF : workRaw;
+  const rawSpeed = p[PROP.SPEED.join(",")];
+  // F11 通过风速控制开关（设备回报 128+百分比）；J15SL 用独立开关属性，风速在低 8 位
+  const off = state.profile.speedOffset;
+  const speed = rawToSpeed(rawSpeed);
+  // J15SL 有独立开关属性：开关只看 STATUS；F11 只能靠风速判断（回报 128+百分比）
+  const on = state.profile.powerViaSpeed
+    ? (work === WORK_ON || (rawSpeed !== undefined && rawSpeed >= off))
+    : work === WORK_ON;
+  const level = on ? speedLevel(speed) : 0;
+
+  $("powerBtn").classList.toggle("on", on);
+  $("dialValue").textContent = on ? `${speed}` : "OFF";
+  $("dialLabel").textContent = on ? "SPEED %" : work === WORK_IDLE ? "待机" : "已关机";
+  $("arc").style.strokeDashoffset = String(ARC_LEN * (1 - (on ? speed : 0) / 100));
+  $("pctValue").textContent = on ? String(speed) : "--";
+  $("speedRange").value = String(on ? speed : 0);
+  $("speedRange").style.setProperty("--p", `${on ? speed : 0}%`);
+  for (const b of document.querySelectorAll(".lvl")) {
+    b.classList.toggle("active", on && Number(b.dataset.level) === level);
+  }
+  const blades = $("blades");
+  if (on && speed > 0) {
+    const dur = Math.max(0.35, 3.6 / (0.25 + speed / 33));
+    blades.style.animation = `spin ${dur.toFixed(2)}s linear infinite`;
+    blades.style.opacity = String(0.35 + speed / 250);
+  } else {
+    blades.style.animation = "";
+    blades.style.opacity = ".5";
+  }
+
+  const light = p[PROP.LIGHT.join(",")];
+  $("lightToggle").classList.toggle("on", light === 1);
+
+  const battery = p[PROP.BATTERY.join(",")];
+  $("statBattery").innerHTML = battery === undefined ? "--<small> %</small>" : `${battery}<small> %</small>`;
+  const chg = p[PROP.CHARGE.join(",")];
+  const chgText = { 0: "未充电", 1: "充电中", 2: "已充满" }[chg] ?? "--";
+  $("statCharging").textContent = chgText;
+  $("statCharging").style.color = chg === 1 ? "var(--accent)" : chg === 2 ? "var(--accent-2)" : "";
+
+  const remain = p[PROP.REMAIN.join(",")];
+  // 只在设备上报新值时才覆盖本地倒计时，否则刚设定时会被旧值冲掉
+  if (remain !== undefined && remain !== state.remainRaw) {
+    state.remainRaw = remain;
+    state.countdown = Math.max(0, remain | 0) * state.profile.remainFactor;
+    state.lastNotify = Date.now();
+  }
+  renderTimer();
+}
+
+function renderTimer() {
+  const left = state.countdown;
+  const active = left > 0;
+  $("statRemaining").textContent = active ? hms(left) : "未定时";
+  $("timerBtn").classList.toggle("on", active);
+  const picked = timerInputValue();
+  // 定时生效时按钮显示剩余时长，再点一次即取消
+  $("timerLabel").textContent = active
+    ? `剩余 ${hms(left)}`
+    : picked > 0 ? `开始定时 ${picked} ${timerUnitLabel()}` : "定时 关";
+  // 定时进行中锁定输入，避免与设备的倒计时冲突
+  for (const el of [$("timerInput"), $("timerMinus"), $("timerPlus")]) el.disabled = !state.connected || active;
+  $("timerRow").style.opacity = active || picked > 0 ? "1" : ".45";
+}
+
+function hms(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
+setInterval(() => {
+  if (state.connected && state.countdown > 0) {
+    state.countdown--;
+    if (state.countdown === 0) setTimerInput(0);
+    renderTimer();
+  }
+}, 1000);
+
+/* ---- 写入封装 ---- */
+async function writeProp(siid, piid, value, label) {
+  if (!state.session || !state.connected) throw new Error("未连接");
+  await state.session.write(siid, piid, value);
+  if (label) log(label, "ok");
+  // 设备上报的风速是 offset+百分比，本地乐观更新也要用同一编码，否则会闪回 0
+  const isSpeed = siid === PROP.SPEED[0] && piid === PROP.SPEED[1];
+  const off = state.profile.speedOffset;
+  state.props[`${siid},${piid}`] = isSpeed ? (value > 0 ? off + value : (off ? 1 : 0)) : value;
+}
+
+async function guarded(fn) {
+  if (state.busy) return;
+  state.busy = true;
+  try { await fn(); }
+  catch (e) { log(e.message || String(e), "er"); }
+  finally { state.busy = false; }
+}
+
+/* ---- 控件事件 ---- */
+function isRunning() {
+  const work = state.props[PROP.STATUS.join(",")];
+  if (!state.profile.powerViaSpeed) return work === WORK_ON;
+  const raw = state.props[PROP.SPEED.join(",")];
+  const off = state.profile.speedOffset;
+  return (raw !== undefined && raw > 0 && raw >= off) || work === WORK_ON;
+}
+
+/** 设风速；设备关机时先开机，设 0 视为关机（并清空挡位） */
+async function applySpeed(speed, label) {
+  const running = isRunning();
+  const viaSpeed = state.profile.powerViaSpeed;
+  if (speed <= 0) {
+    if (viaSpeed) {
+      await writeProp(...PROP.SPEED, 0, "已关机");
+      return;
+    }
+    if (!running) return;
+    await writeProp(...PROP.STATUS, 0, "已关机");
+    await writeProp(...PROP.SPEED, 0);   // 清空挡位，风扇动画随之停止
+    return;
+  }
+  if (!viaSpeed && !running) {
+    await writeProp(...PROP.STATUS, WORK_ON, "已开机");
+  }
+  await writeProp(...PROP.SPEED, speed, label);
+}
+
+function bindControls() {
+  $("powerBtn").onclick = () => guarded(async () => {
+    const on = isRunning();
+    if (on) {
+      const cur = rawToSpeed(state.props[PROP.SPEED.join(",")]);
+      if (cur > 0) state.lastSpeed = cur;
+      if (state.profile.powerViaSpeed) {
+        await writeProp(...PROP.SPEED, 0, "已关机");
+      } else {
+        await writeProp(...PROP.STATUS, 0, "已关机");
+        await writeProp(...PROP.SPEED, 0);   // 关机同时清空挡位
+      }
+    } else {
+      const sp = state.lastSpeed > 0 ? state.lastSpeed : 50;
+      if (state.profile.powerViaSpeed) {
+        await writeProp(...PROP.SPEED, sp, `已开机 · 风速 ${sp}%`);
+      } else {
+        await writeProp(...PROP.STATUS, WORK_ON, "已开机");
+        await writeProp(...PROP.SPEED, sp, `风速 ${sp}%`);
+      }
+    }
+    render();
+  });
+
+  for (const b of document.querySelectorAll(".lvl")) {
+    b.onclick = () => guarded(async () => {
+      const level = Number(b.dataset.level);
+      const speed = levelToSpeed(level);
+      if (speed > 1) state.lastSpeed = speed;
+      await applySpeed(speed, `档位 ${level}（${LEVEL_LABELS[level]}）`);
+      render();
+    });
+  }
+
+  let speedTimer = null;
+  $("speedRange").oninput = (e) => {
+    const v = Number(e.target.value);
+    e.target.style.setProperty("--p", `${v}%`);
+    $("pctValue").textContent = v > 0 ? String(v) : "--";
+    clearTimeout(speedTimer);
+    speedTimer = setTimeout(() => guarded(async () => {
+      if (v > 1) state.lastSpeed = v;
+      await applySpeed(v, v > 0 ? `风速 ${v}%` : "已关机");
+      render();
+    }), 180);
+  };
+
+  $("lightToggle").onclick = () => guarded(async () => {
+    const on = state.props[PROP.LIGHT.join(",")] === 1;
+    await writeProp(...PROP.LIGHT, on ? 0 : 1, on ? "夜灯关闭" : "夜灯开启");
+    render();
+  });
+
+  // 定时：未开始时用输入框的值开机；已开始时点一下即取消
+  $("timerBtn").onclick = () => guarded(async () => {
+    if (state.countdown > 0) {
+      await writeProp(...PROP.TIMER, 0, "已取消定时");
+      state.countdown = 0;
+      render();
+      return;
+    }
+    const v = timerInputValue();
+    if (v <= 0) {
+      showMsg("connMsg", "请先用 − / + 或输入框设置定时时长", "warn");
+      return;
+    }
+    await writeProp(...PROP.TIMER, v, `定时 ${v} ${timerUnitLabel()}`);
+    state.countdown = timerSeconds(v);
+    render();
+  });
+
+  $("timerMinus").onclick = () => setTimerInput(timerInputValue() - state.profile.timerStep);
+  $("timerPlus").onclick = () => setTimerInput(timerInputValue() + state.profile.timerStep);
+  $("timerInput").oninput = () => {
+    $("timerValue").textContent = String(timerInputValue());
+    renderTimer();
+  };
+  $("timerInput").onchange = () => setTimerInput(timerInputValue());
+}
+
+/* ---- 连接流程 ---- */
+async function openSession(device) {
+  const tokenHex = $("tokenInput").value.trim().replace(/[^0-9a-fA-F]/g, "");
+  if (tokenHex.length !== 24) throw new Error("BLE Token 必须是 24 位十六进制（12 字节）");
+  state.connecting = true;
+  state.props = {};
+  state.countdown = 0;
+  state.remainRaw = undefined;
+  setConn("busy", "连接中…");
+  try {
+    state.profile = detectProfile(device.name);
+    PROP = state.profile.props;
+    applyProfileUI();
+    log(`连接 ${device.name || device.id} …（型号配置：${state.profile.label}）`);
+    const session = new F11Session(device, u8(...tokenHex.match(/../g).map((h) => parseInt(h, 16))), {
+      widths: state.profile.widths,
+      onRaw: (name, data) => { if ($("rawToggle").checked) log(`通知 ${name} ${hex(data)}`, "info"); },
+      onProperties: (values) => {
+        const changed = Object.keys(values).filter((k) => state.props[k] !== values[k]);
+        Object.assign(state.props, values);
+        if (changed.length) {
+          log(`设备回报 ${changed.map((k) => `${propName(k)}=${values[k]}`).join(" · ")}`, "info");
+        }
+        render();
+      },
+      onLog: (m, c) => log(m, c),
+    });
+    await session.connect();
+    log("GATT 已连接，开始 Mi 认证 …");
+    await session.start();
+    state.session = session;
+    state.device = device;
+    state.retry = 0;
+    if (state.listenedDevice !== device) {
+      device.addEventListener("gattserverdisconnected", onGattDisconnected);
+      state.listenedDevice = device;
+    }
+    setConn("on", "已连接");
+    hideMsg("connMsg");
+    $("modelText").textContent = device.name || "F11";
+    log("认证成功，设备已就绪", "ok");
+    // 认证后设备通常会自动上报一次全量状态，稍等再渲染
+    await sleep(400);
+    render();
+  } finally {
+    state.connecting = false;
+  }
+}
+
+async function connectByPicker() {
+  if (!navigator.bluetooth) {
+    $("unsupported").classList.add("show");
+    return;
+  }
+  hideMsg("connMsg");
+  try {
+    setConn("busy", "选择设备…");
+    const opts = { optionalServices: [...Object.values(CH), MIBEACON_SERVICE] };
+    let device;
+    try {
+      // 先按已知型号名过滤，列表里只留相关设备
+      device = await navigator.bluetooth.requestDevice({
+        ...opts,
+        filters: [
+          { namePrefix: "als1" },
+          { namePrefix: "szxzh" },
+          { namePrefix: "AIVI" },
+          { namePrefix: "MIIIW" },
+        ],
+      });
+    } catch (e) {
+      if (e && e.name === "NotFoundError" && !/cancel/i.test(e.message || "")) {
+        log("没有匹配到已知型号名称，改为列出全部设备", "wr");
+        device = await navigator.bluetooth.requestDevice({ ...opts, acceptAllDevices: true });
+      } else {
+        throw e;
+      }
+    }
+    saveStore({ lastDeviceId: device.id });
+    await openSession(device);
+  } catch (e) {
+    if (e && e.name === "NotFoundError") {
+      setConn("", "未连接");
+      showMsg("connMsg", "已取消选择。若列表为空，请先关闭手机上占用该风扇的米家/蓝牙，再试一次。", "warn");
+      return;
+    }
+    setConn("err", "连接失败");
+    showMsg("connMsg", e.message || String(e), "err");
+    log(e.message || String(e), "er");
+  }
+}
+
+async function quickReconnect() {
+  if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+    showMsg("connMsg", "当前浏览器不支持快速重连，请用「选择设备并连接」", "warn");
+    return;
+  }
+  try {
+    setConn("busy", "查找已授权设备…");
+    const devices = await navigator.bluetooth.getDevices();
+    const saved = loadStore().lastDeviceId;
+    const device = devices.find((d) => d.id === saved) || devices[0];
+    if (!device) throw new Error("没有已授权的设备，请先用「选择设备并连接」授权一次");
+    await openSession(device);
+  } catch (e) {
+    setConn("err", "重连失败");
+    showMsg("connMsg", e.message || String(e), "err");
+    log(e.message || String(e), "er");
+  }
+}
+
+function handleDisconnect() {
+  state.session = null;
+  state.props = {};
+  state.countdown = 0;
+  state.remainRaw = undefined;
+  setConn("", "已断开");
+  log("连接已断开", "wr");
+  if (!state.autoReconnect) return;
+  const delay = Math.min(60000, 5000 * 2 ** state.retry);
+  state.retry++;
+  log(`${Math.round(delay / 1000)} 秒后自动重连（第 ${state.retry} 次）…`, "wr");
+  clearTimeout(state.timerRetry);
+  state.timerRetry = setTimeout(async () => {
+    if (!state.device || state.connected) return;
+    try {
+      await openSession(state.device);
+      log("自动重连成功", "ok");
+    } catch (e) {
+      log(`自动重连失败：${e.message || e}`, "er");
+      handleDisconnect();
+    }
+  }, delay);
+}
+
+/** GATT 断开事件：仅在连接已建立后触发自动重连 */
+function onGattDisconnected() {
+  if (state.connecting) return;           // 主动连接/重连过程中忽略旧会话的断开回调
+  if (!state.connected && !state.session) return;
+  handleDisconnect();
+}
+
+/* ---- 云端 token 提取 ---- */
+const proxyBase = () => ($("proxyInput").value.trim() || "http://127.0.0.1:8765").replace(/\/+$/, "");
+
+async function cloudLogin() {
+  const username = $("userInput").value.trim();
+  const password = $("passInput").value;
+  if (!username || !password) { showMsg("cloudMsg", "请输入小米账号和密码", "warn"); return; }
+  $("loginBtn").disabled = true;
+  showMsg("cloudMsg", "正在登录小米云 …", "warn");
+  log(`登录小米云 (${proxyBase()}) …`);
+  try {
+    const res = await fetch(`${proxyBase()}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json().catch(() => ({ ok: false, error: `代理返回非 JSON (HTTP ${res.status})` }));
+    if (!res.ok || !data.ok) throw new Error(data.error || `登录失败 (HTTP ${res.status})`);
+    state.sid = data.sid;
+    $("logoutBtn").disabled = false;
+    $("passInput").value = "";
+    showMsg("cloudMsg", "登录成功，正在拉取设备列表 …", "ok");
+    log("小米云登录成功", "ok");
+    await cloudFetchDevices();
+  } catch (e) {
+    const msg = /Failed to fetch|NetworkError/i.test(e.message || "")
+      ? `无法连接本地代理 ${proxyBase()}，请先在终端运行：node proxy.js`
+      : (e.message || String(e));
+    showMsg("cloudMsg", msg, "err");
+    log(msg, "er");
+  } finally {
+    $("loginBtn").disabled = false;
+  }
+}
+
+async function cloudFetchDevices() {
+  if (!state.sid) return;
+  const servers = $("serverSelect").value;
+  showMsg("cloudMsg", servers ? `正在读取 ${servers} 服务器设备 …` : "正在扫描全部服务器（较慢，请稍候）…", "warn");
+  const res = await fetch(`${proxyBase()}/api/devices?sid=${encodeURIComponent(state.sid)}&servers=${encodeURIComponent(servers)}`);
+  const data = await res.json().catch(() => ({ ok: false, error: `代理返回非 JSON (HTTP ${res.status})` }));
+  if (!res.ok || !data.ok) throw new Error(data.error || `拉取设备失败 (HTTP ${res.status})`);
+  renderDevices(data.devices || []);
+  const ble = (data.devices || []).filter((d) => d.isBle && d.beaconkey).length;
+  showMsg("cloudMsg", `共 ${data.devices.length} 台设备，其中 ${ble} 台可直接提取 BLE 密钥`, "ok");
+  log(`云端返回 ${data.devices.length} 台设备`, "ok");
+}
+
+function renderDevices(list) {
+  const box = $("devList");
+  box.innerHTML = "";
+  if (!list.length) {
+    box.innerHTML = `<div class="hint">该服务器下没有设备</div>`;
+    return;
+  }
+  // BLE 设备排前面
+  list.sort((a, b) => Number(b.isBle) - Number(a.isBle));
+  for (const d of list) {
+    const row = document.createElement("div");
+    row.className = "dev";
+    const badges = [];
+    if (d.isBle) badges.push(`<span class="badge ble">BLE</span>`);
+    else badges.push(`<span class="badge">WiFi</span>`);
+    badges.push(`<span class="badge">${d.server}</span>`);
+    row.innerHTML = `
+      <div style="min-width:0">
+        <div class="nm"></div>
+        <div class="mt"></div>
+      </div>
+      <div style="display:flex;gap:5px;align-items:center;margin-left:auto">${badges.join("")}</div>`;
+    row.querySelector(".nm").textContent = d.name;
+    row.querySelector(".mt").textContent = `${d.mac} · ${d.model || d.did}`;
+    if (d.isBle && d.beaconkey) {
+      const btn = document.createElement("button");
+      btn.className = "primary";
+      btn.textContent = "填入";
+      btn.onclick = () => {
+        applyToken(d.beaconkey);
+        showMsg("connMsg", `已填入 ${d.name} 的 BLE Token（地址栏已同步，收藏本页即可免填写）`, "ok");
+        log(`已填入 ${d.name} 的 BLE Token`, "ok");
+      };
+      row.appendChild(btn);
+    } else if (d.isBle) {
+      const tip = document.createElement("span");
+      tip.className = "badge";
+      tip.title = d.beaconkeyError || "";
+      tip.textContent = "无密钥";
+      row.appendChild(tip);
+    }
+    box.appendChild(row);
+  }
+}
+
+async function cloudLogout() {
+  const sid = state.sid;
+  state.sid = null;
+  $("logoutBtn").disabled = true;
+  $("devList").innerHTML = "";
+  hideMsg("cloudMsg");
+  if (sid) await fetch(`${proxyBase()}/api/logout`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid }) }).catch(() => {});
+  log("已注销云端会话");
+}
+
+/* ---- 初始化 ---- */
+function init() {
+  // 旋转动画所需的 keyframes（写在 style 里避免额外的样式块）
+  const st = document.createElement("style");
+  st.textContent = "@keyframes spin { to { transform: rotate(360deg); } }";
+  document.head.appendChild(st);
+
+  const supported = !!navigator.bluetooth;
+  if (!supported) {
+    $("unsupported").classList.add("show");
+    $("connectBtn").disabled = true;
+    $("reconnectBtn").disabled = true;
+  } else {
+    navigator.bluetooth.getAvailability?.().then((ok) => {
+      if (!ok) showMsg("connMsg", "系统蓝牙未开启，或浏览器没有蓝牙权限。", "err");
+    }).catch(() => {});
+    if (location.protocol === "file:") {
+      log("当前为 file:// 打开，部分 Windows 版本会限制 Web Bluetooth 扫描；建议运行 node proxy.js 后用 http://127.0.0.1:8765 访问。", "wr");
+    }
+  }
+
+  const saved = loadStore();
+  const urlToken = tokenFromUrl();
+  applyToken(urlToken || saved.token || "");
+  if (saved.proxy) $("proxyInput").value = saved.proxy;
+
+  $("tokenInput").onchange = () => applyToken($("tokenInput").value);
+  $("proxyInput").onchange = () => saveStore({ proxy: $("proxyInput").value.trim() });
+
+  $("connectBtn").onclick = connectByPicker;
+  $("reconnectBtn").onclick = quickReconnect;
+  $("disconnectBtn").onclick = () => {
+    state.autoReconnect = false;
+    clearTimeout(state.timerRetry);
+    if (state.session) state.session.disconnect();
+    else setConn("", "未连接");
+    log("已手动断开（自动重连已暂停）");
+    setTimeout(() => { state.autoReconnect = true; }, 1000);
+  };
+
+  $("loginBtn").onclick = cloudLogin;
+  $("logoutBtn").onclick = cloudLogout;
+  $("passInput").addEventListener("keydown", (e) => { if (e.key === "Enter") cloudLogin(); });
+
+  bindControls();
+  setConn("", "未连接");
+  log("页面已就绪。先填写 BLE Token（或从云端设备列表点「填入」），再点击「选择设备并连接」。");
+  if (normalizeToken($("tokenInput").value)) log("已从地址栏读取 BLE Token，可直接连接；收藏本页后下次打开无需再填。", "ok");
+  log("提示：本地代理需单独运行 node proxy.js 才能使用云端提取。");
+}
+
+init();
+</script>
+</body>
+</html>
